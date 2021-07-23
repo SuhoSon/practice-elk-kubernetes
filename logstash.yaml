@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-configmap
+  namespace: elk-stack
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+  logstash.conf: |
+    input {
+      beats {
+        port => "5044"
+        ssl => false
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ['${ES_HOST:elasticsearch}:${ES_PORT:9200}']
+        index => "kubernetes-container-log-%{+YYYY-MM-dd}"
+        user => "${ES_USER}"
+        password => "${ES_PASSWORD}"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: elk-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:7.13.3
+        env:
+        - name: ES_HOST
+          value: "http://elasticsearch-svc.elk-stack.svc.cluster.local"
+        - name: ES_PORT
+          value: "9200"
+        - name: ES_USER
+          value: "elastic"
+        - name: ES_PASSWORD
+          value: "changeme"
+        ports:
+        - containerPort: 5044
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/logstash/config
+        - name: logstash-pipeline-volume
+          mountPath: /usr/share/logstash/pipeline
+      volumes:
+      - name: config-volume
+        configMap:
+          name: logstash-configmap
+          items:
+          - key: logstash.yml
+            path: logstash.yml
+      - name: logstash-pipeline-volume
+        configMap:
+          name: logstash-configmap
+          items:
+          - key: logstash.conf
+            path: logstash.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash-svc
+  namespace: elk-stack
+spec:
+  selector:
+    app: logstash
+  ports:
+  - nodePort: 30240
+    port: 5044
+    protocol: TCP
+    targetPort: 5044
+  type: NodePort

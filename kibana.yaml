@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-svc
+  namespace: elk-stack
+spec:
+  selector:
+    app: kibana
+  ports:
+  - nodePort: 30920
+    port: 5601
+    protocol: TCP
+    targetPort: 5601
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elk-stack
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: elastic/kibana:7.13.3
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch-svc.elk-stack.svc.cluster.local:9200"
+        ports:
+        - containerPort: 5601
+          name: http
